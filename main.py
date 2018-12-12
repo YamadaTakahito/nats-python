@@ -2,11 +2,13 @@ import asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
 
+NATS_URL = "demo.nats.io:4222"
+
 
 async def run(loop):
     nc = NATS()
 
-    await nc.connect("demo.nats.io:4222", loop=loop)
+    await nc.connect(NATS_URL, loop=loop)
 
     async def message_handler(msg):
         subject = msg.subject
@@ -39,7 +41,7 @@ async def run(loop):
     # Send a request and expect a single response
     # and trigger timeout if not faster than 200 ms.
     try:
-        response = await nc.request("help", b'help me', 0.2)
+        response = await nc.request("help", b'help me', 0.3)
         print("Received response: {message}".format(
             message=response.data.decode()))
     except ErrTimeout:
@@ -51,7 +53,41 @@ async def run(loop):
     # Terminate connection to NATS.
     await nc.close()
 
+
+def send_agent(publisher, msg):
+    nc = NATS()
+    nc.connect(NATS_URL)
+    nc.publish(publisher, msg.encode('utf-8'))
+    nc.drain()
+
+
+def subscribe(loop):
+    nc = NATS()
+    nc.connect(NATS_URL)
+
+    async def help_request(msg):
+        subject = msg.subject
+        reply = msg.reply
+        data = msg.data.decode()
+        print("Received a message on '{subject} {reply}': {data}".format(
+            subject=subject, reply=reply, data=data))
+        await nc.publish(reply, b'I can help')
+
+    # Use queue named 'workers' for distributing requests
+    # among subscribers.
+    sid = await nc.subscribe("help", "workers", help_request)
+
+    # Send a request and expect a single response
+    # and trigger timeout if not faster than 200 ms.
+    try:
+        response = await nc.request("help", b'help me', 0.3)
+        print("Received response: {message}".format(
+            message=response.data.decode()))
+    except ErrTimeout:
+        print("Request timed out")
+
+
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(subscribe(loop))
     loop.close()
