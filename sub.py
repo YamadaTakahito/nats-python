@@ -1,7 +1,7 @@
 import asyncio
 import signal
 
-from settings import SUB
+from settings import SUB, NATS_URL
 
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
