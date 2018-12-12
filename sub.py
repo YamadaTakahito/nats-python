@@ -20,17 +20,7 @@ def reconnected_cb():
     print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
 
-# @asyncio.coroutine
-# def subscribe_handler(msg):
-#     subject = msg.subject
-#     reply = msg.reply
-#     data = msg.data.decode('utf-8')
-
-#     print("Received a message on '{subject} {reply}': {data}".format(
-#         subject=subject, reply=reply, data=data))
-
-
-def sub(loop, subject):
+def sub(loop):
     nc = NATS()
 
     options = {
@@ -53,33 +43,18 @@ def sub(loop, subject):
     async def help_request(msg):
         subject = msg.subject
         reply = msg.reply
-        data = msg.data.decode('utf-8')
+        data = msg.data.decode()
         print("Received a message on '{subject} {reply}': {data}".format(
             subject=subject, reply=reply, data=data))
-        await nc.publish(reply, b'I can help')
+        await nc.publish(reply, b'CCC')
 
-    yield from nc.subscribe(subject, cb=help_request)
+    yield from nc.subscribe(SUB, cb=help_request)
 
 
 if __name__ == '__main__':
-    idx = sys.argv[-1]
-    subject = "{}.{}".format(SUB, idx)
-
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(sub(loop, subject))
+    loop.run_until_complete(sub(loop))
     try:
         loop.run_forever()
     finally:
         loop.close()
-
-    # async def help_request(msg):
-    #     subject = msg.subject
-    #     reply = msg.reply
-    #     data = msg.data.decode()
-    #     print("Received a message on '{subject} {reply}': {data}".format(
-    #         subject=subject, reply=reply, data=data))
-    #     await nc.publish(reply, b'I can help')
-
-    # # Use queue named 'workers' for distributing requests
-    # # among subscribers.
-    # sid = await nc.subscribe("help", "workers", help_request)
