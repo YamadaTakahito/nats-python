@@ -1,42 +1,43 @@
 import asyncio
-import os
 import signal
+
+from settings import SUB
+
 from nats.aio.client import Client as NATS
+from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+
+NATS_URL = "demo.nats.io:4222"
 
 
-def run(loop):
-    nc = NATS()
-
+def sub(loop):
     @asyncio.coroutine
     def closed_cb():
         print("Connection to NATS is closed.")
         yield from asyncio.sleep(0.1, loop=loop)
         loop.stop()
 
-    options = {
-        "servers": "demo.nats.io:4222",
-        "io_loop": loop,
-        "closed_cb": closed_cb
-    }
-
-    yield from nc.connect(**options)
-    print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+    @asyncio.coroutine
+    def reconnected_cb():
+        print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
     @asyncio.coroutine
     def subscribe_handler(msg):
         subject = msg.subject
         reply = msg.reply
-        data = msg.data.decode()
+        data = msg.data.decode('utf-8')
+
         print("Received a message on '{subject} {reply}': {data}".format(
             subject=subject, reply=reply, data=data))
 
-    # Basic subscription to receive all published messages
-    # which are being sent to a single topic 'discover'
-    yield from nc.subscribe("discover", cb=subscribe_handler)
-
-    # Subscription on queue named 'workers' so that
-    # one subscriber handles message a request at a time.
-    yield from nc.subscribe("help.*", "workers", subscribe_handler)
+    options = {
+        "io_loop": loop,
+        "closed_cb": closed_cb,
+        "reconnected_cb": reconnected_cb,
+        "servers": NATS_URL
+    }
+    nc = NATS()
+    yield from nc.connect(**options)
+    print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
     def signal_handler():
         if nc.is_closed:
@@ -47,10 +48,12 @@ def run(loop):
     for sig in ('SIGINT', 'SIGTERM'):
         loop.add_signal_handler(getattr(signal, sig), signal_handler)
 
+    yield from nc.subscribe(SUB, cb=subscribe_handler)
+
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run(loop))
+    loop.run_until_complete(sub(loop))
     try:
         loop.run_forever()
     finally:
