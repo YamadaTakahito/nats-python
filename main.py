@@ -1,55 +1,50 @@
 import asyncio
 from nats.aio.client import Client as NATS
-from nats.aio.errors import ErrConnectionClosed, ErrTimeout, ErrNoServers
+from nats.aio.errors import ErrTimeout, ErrNoServers
 
 
 async def run(loop):
     nc = NATS()
 
-    await nc.connect("demo.nats.io:4222", loop=loop)
+    try:
+        # Setting explicit list of servers in a cluster.
+        await nc.connect(servers=["nats://127.0.0.1:4222", "nats://127.0.0.1:4223", "nats://127.0.0.1:4224"], loop=loop)
+    except ErrNoServers as e:
+        print(e)
+        return
 
     async def message_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
+        for i in range(0, 20):
+            await nc.publish(reply, "i={i}".format(i=i).encode())
 
-    # Simple publisher and async subscriber via coroutine.
-    sid = await nc.subscribe("foo", cb=message_handler)
+    await nc.subscribe("help.>", cb=message_handler)
 
-    # Stop receiving after 2 messages.
-    await nc.auto_unsubscribe(sid, 2)
-    await nc.publish("foo", b'Hello')
-    await nc.publish("foo", b'World')
-    await nc.publish("foo", b'!!!!!')
-
-    async def help_request(msg):
+    async def request_handler(msg):
         subject = msg.subject
         reply = msg.reply
         data = msg.data.decode()
         print("Received a message on '{subject} {reply}': {data}".format(
             subject=subject, reply=reply, data=data))
-        await nc.publish(reply, b'I can help')
 
-    # Use queue named 'workers' for distributing requests
-    # among subscribers.
-    sid = await nc.subscribe("help", "workers", help_request)
+    # Signal the server to stop sending messages after we got 10 already.
+    await nc.request(
+        "help.please", b'help', expected=10, cb=request_handler)
 
-    # Send a request and expect a single response
-    # and trigger timeout if not faster than 200 ms.
     try:
-        response = await nc.request("help", b'help me', 0.3)
-        print("Received response: {message}".format(
-            message=response.data.decode()))
+        # Flush connection to server, returns when all messages have been processed.
+        # It raises a timeout if roundtrip takes longer than 1 second.
+        await nc.flush(1)
     except ErrTimeout:
-        print("Request timed out")
+        print("Flush timeout")
 
-    # Remove interest in subscription.
-    await nc.unsubscribe(sid)
+    await asyncio.sleep(1, loop=loop)
 
-    # Terminate connection to NATS.
-    await nc.close()
+    # Drain gracefully closes the connection, allowing all subscribers to
+    # handle any pending messages inflight that the server may have sent.
+    await nc.drain()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
