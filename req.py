@@ -6,31 +6,14 @@ from settings import SUB, NATS_URL
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 
-TIME_OUT = 10
-
-
-@asyncio.coroutine
-def closed_cb():
-    print("Connection to NATS is closed.")
-    yield from asyncio.sleep(0.1, loop=loop)
-    loop.stop()
-
-
-@asyncio.coroutine
-def reconnected_cb():
-    print("Connected to NATS at {}...".format(nc.connected_url.netloc))
+TIME_OUT = 1
 
 
 async def req(loop):
     nc = NATS()
+    messages = []
 
-    options = {
-        "io_loop": loop,
-        "closed_cb": closed_cb,
-        "reconnected_cb": reconnected_cb,
-        "servers": NATS_URL
-    }
-    await nc.connect(**options)
+    await nc.connect(NATS_URL, loop=loop)
 
     async def request_handler(msg):
         subject = msg.subject
@@ -39,9 +22,11 @@ async def req(loop):
         print("Received a message on '{subject} {reply}': {data}".format(
             subject=subject, reply=reply, data=data))
 
+        messages.append(data)
+
     # Signal the server to stop sending messages after we got 10 already.
     await nc.request(
-        SUB, b'help', expected=3, cb=request_handler)
+        SUB, b'help', TIME_OUT, expected=2, cb=request_handler)
 
     try:
         # Flush connection to server, returns when all messages have been processed.
@@ -55,9 +40,15 @@ async def req(loop):
     # Drain gracefully closes the connection, allowing all subscribers to
     # handle any pending messages inflight that the server may have sent.
     await nc.drain()
+    return messages
+
+
+def get_messages():
+    loop = asyncio.get_event_loop()
+    msgs = loop.run_until_complete(req(loop))
+    loop.close()
+    print(msgs)
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(req(loop))
-    loop.close()
+    get_messages()
