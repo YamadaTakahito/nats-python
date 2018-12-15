@@ -21,7 +21,7 @@ def reconnected_cb():
     print("Connected to NATS at {}...".format(nc.connected_url.netloc))
 
 
-async def req(loop):
+async def req(loop, msg):
     nc = NATS()
 
     options = {
@@ -32,32 +32,17 @@ async def req(loop):
     }
     await nc.connect(**options)
 
-    async def request_handler(msg):
-        subject = msg.subject
-        reply = msg.reply
-        data = msg.data.decode()
-        print("Received a message on '{subject} {reply}': {data}".format(
-            subject=subject, reply=reply, data=data))
-
-    # Signal the server to stop sending messages after we got 10 already.
-    await nc.request(
-        SUB, b'help', expected=3, cb=request_handler)
-
     try:
-        # Flush connection to server, returns when all messages have been processed.
-        # It raises a timeout if roundtrip takes longer than 1 second.
-        await nc.flush(1)
+        res = await nc.request(SUB, msg.encode('utf-8'), TIME_OUT)
+        print("Received response: {}".format(res.data.decode()))
     except ErrTimeout:
         print("Flush timeout")
 
-    await asyncio.sleep(5, loop=loop)
-
-    # Drain gracefully closes the connection, allowing all subscribers to
-    # handle any pending messages inflight that the server may have sent.
-    await nc.drain()
+    await nc.close()
 
 
 if __name__ == '__main__':
+    msg = 'sample message'
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(req(loop))
+    loop.run_until_complete(req(loop, msg))
     loop.close()

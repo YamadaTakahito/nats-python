@@ -46,7 +46,7 @@ def sub(loop):
         data = msg.data.decode()
         print("Received a message on '{subject} {reply}': {data}".format(
             subject=subject, reply=reply, data=data))
-        await nc.publish(reply, b'CCC')
+        await nc.publish(reply, b'BBB')
 
     yield from nc.subscribe(SUB, cb=help_request)
 
