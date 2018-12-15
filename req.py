@@ -30,7 +30,3 @@ if __name__ == '__main__':
     loop.run_until_complete(req(loop, msg))
     loop.close()
     print(msgs)
-
-
-if __name__ == '__main__':
-    get_messages()
